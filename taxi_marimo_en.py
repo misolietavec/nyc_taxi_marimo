@@ -15,8 +15,8 @@ def __():
     import polars as pl
     import plotly.express as px
     import os
-    from data_functions_en import make_graphs, static_graphs
-    return make_graphs, os, pl, px, static_graphs
+    from data_functions_en import make_graphs, static_graphs, passengers_data
+    return make_graphs, os, passengers_data, pl, px, static_graphs
 
 
 @app.cell
@@ -79,32 +79,60 @@ def __(day_choose, df, direction, hour_choose, meanloc, mo, px):
 
 
 @app.cell
-def __(
-    day_choose,
-    direction,
-    hour_choose,
-    hourly,
-    mo,
-    nsample,
-    static_plots,
-    view_map,
-):
-    _main_title = mo.md(
+def __(mo, nsample, view_map):
+    main_title = mo.md(
         f"""
         # Taxi in New York City
         ### Data from january 2015, sample of {nsample} records.""")
     mapplot = view_map()
-    _maps = mo.vstack([mo.hstack([direction, day_choose, hour_choose], justify='center'), mapplot], align='center')
-    _tabs = mo.tabs({'Day plots': hourly, 'Summary plots': static_plots,
-                   'Locations on map': _maps})
-    mo.vstack([_main_title, _tabs], align='stretch')
-    return mapplot,
+    return main_title, mapplot
 
 
 @app.cell
-def __(mapplot):
-    mapplot.value[:5]
-    return
+def __(
+    day_choose,
+    df,
+    direction,
+    hour_choose,
+    hourly,
+    main_title,
+    mapplot,
+    mo,
+    passengers_data,
+    pl,
+    static_plots,
+):
+    local_data = mapplot.ranges != {}
+    if local_data:
+        _mapranges = mapplot.ranges['mapbox']
+        lon_min, lat_max = _mapranges[0]
+        lon_max, lat_min = _mapranges[1]
+        df_ranges = df.filter((lat_min < pl.col('pick_lat')) & (pl.col('pick_lat') < lat_max) &
+                              (lon_min < pl.col('pick_lon')) & (pl.col('pick_lon') < lon_max) &
+                              (pl.col('pick_dt').dt.day() == day_choose.value))
+
+    _maps = mo.vstack([mo.hstack([direction, day_choose, hour_choose], justify='center'), 
+                       mapplot], align='center')
+    if local_data:
+        local_plot = passengers_data(df_ranges, pick=True)
+        _tabs = mo.tabs({'Day plots': hourly, 'Summary plots': static_plots,
+                        'Locations on map': _maps, 'Selection graphs': mo.vstack([day_choose, local_plot])})
+    else:
+        _tabs = mo.tabs({'Day plots': hourly, 'Summary plots': static_plots,
+                        'Locations on map': _maps})
+        
+    app_tabs = mo.vstack([main_title, _tabs], align='stretch') 
+    app_tabs
+    return (
+        app_tabs,
+        df_ranges,
+        lat_max,
+        lat_min,
+        local_data,
+        local_plot,
+        lon_max,
+        lon_min,
+    )
 
 
 if __name__ == "__main__":
