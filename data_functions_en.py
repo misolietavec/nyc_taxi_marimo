@@ -27,7 +27,8 @@ def total_graphs(frm, pick=True, height=400, what=['total_pass', 'total_rides', 
     coeff = max(max_jaz, max_pas) / max_far
     trzba = frm['total_fare'].sum()
     frm = frm.with_columns(pl.col('total_fare') * coeff)
-    scalestr = f"Fare multiplied by {coeff:.3f}, total fare {trzba:.2f}" if ('total_fare' in what) else ''
+    scalestr = f"Fare multiplied by {coeff:.3f}, total fare {trzba:.2f}" \
+               if ('total_fare' in what) and not pick else ''
     colname = 'Hour' if not monthly else 'Day'
     graf = px.bar(frm, x=column, y=what, barmode='group', height=height, width=750, title=scalestr, 
                   labels={column: colname, 'value': ylabel})

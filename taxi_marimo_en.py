@@ -50,8 +50,9 @@ def __(mo):
     day_choose = mo.ui.slider(start=1, stop=31, value=14, debounce=True, label='Day')
     hour_choose = mo.ui.slider(start=0, stop=23, value=11, debounce=True, label='Hour')
     direction = mo.ui.radio(options=['Pickup','Dropoff'], value='Pickup', label='Direction', inline=True)
+    map_selection = mo.ui.checkbox(label='Enable box selection')
     map_day_choose = mo.ui.slider(start=1, stop=31, value=14, debounce=True, label='Day for selection')
-    return day_choose, direction, hour_choose, map_day_choose
+    return day_choose, direction, hour_choose, map_day_choose, map_selection
 
 
 @app.cell
@@ -60,7 +61,9 @@ def __(day_choose, dfdays, direction, mo):
         if direction.value == 'Pickup':
             return dfdays[day_choose.value]['pick_graph']
         return dfdays[day_choose.value]['drop_graph']
-    hourly = mo.vstack([mo.hstack([direction, day_choose], justify='center'), _view_hourly()], align='center')
+    _hourly_info = mo.md(f"Day: {day_choose.value}")
+    hourly = mo.vstack([mo.hstack([direction, day_choose, _hourly_info], justify='center'), 
+                        _view_hourly()], align='center')
     return hourly,
 
 
@@ -81,9 +84,9 @@ def __(day_choose, df, direction, hour_choose, meanloc, mo, px):
                                 mapbox_style="open-street-map", zoom=10, width=750, height=500)
         fig.update_traces(marker={"size": 4})
         fig.update_layout(margin={'t': 25}, hovermode=False)
-        return mo.ui.plotly(fig), df_filtered
-    mapplot, df_filtered = view_map()
-    return df_filtered, mapplot, view_map
+        return mo.ui.plotly(fig)
+    mapplot = view_map()
+    return mapplot, view_map
 
 
 @app.cell
@@ -94,6 +97,7 @@ def __(
     hour_choose,
     hourly,
     map_day_choose,
+    map_selection,
     mapplot,
     mo,
     nsample,
@@ -105,8 +109,7 @@ def __(
         f"""
         # Taxi in New York City
         ### Data from january 2015, sample of {nsample} records.""")
-    _local_data = mapplot.ranges != {}
-
+    _local_data =(mapplot.ranges != {}) and map_selection.value
     # add plot for dropoff
     if _local_data:
         _mapranges = mapplot.ranges['mapbox']
@@ -116,11 +119,14 @@ def __(
                               (lon_min < pl.col('pick_lon')) & (pl.col('pick_lon') < lon_max) &
                               (pl.col('pick_day') == map_day_choose.value))
 
-    _local_plot = total_graphs(df_ranges, pick=True, what=['total_pass', 'total_rides']) if _local_data else mo.md('# No selection')
-    _selection_body = mo.vstack([map_day_choose, _local_plot]) if _local_data else mo.vstack([_local_plot])
+    _local_plot = total_graphs(df_ranges, pick=True, what=['total_pass', 'total_rides', 'total_fare']) if _local_data else mo.md('## Nothing selected or selection not enabled')
+    _sel_info = mo.md(f"Day: {map_day_choose.value}")
+    _loc_widgets = mo.hstack([map_day_choose, _sel_info], justify='center', widths=[100, 50])
+    _selection_body = mo.vstack([_loc_widgets, _local_plot]) if _local_data else mo.vstack([_local_plot])
 
-    _maps = mo.vstack([mo.hstack([direction, day_choose, hour_choose], justify='center'), 
-                       mapplot], align='center')
+    _map_info = mo.md(f"Day: {day_choose.value}, Hour: {hour_choose.value}")
+    _maps = mo.vstack([mo.hstack([direction, day_choose, hour_choose, map_selection], justify='center'), 
+                      _map_info, mapplot], align='center')
     _tabs = mo.tabs({'Day plots': hourly, 'Monthly plots': static_plots,
                      'Locations on map': _maps, 'Selection graphs': _selection_body})
 
