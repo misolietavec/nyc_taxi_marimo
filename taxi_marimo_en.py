@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.1.78"
+__generated_with = "0.1.79"
 app = marimo.App(width="full")
 
 
@@ -15,13 +15,13 @@ def __():
     import polars as pl
     import plotly.express as px
     import os
-    from data_functions_en import make_graphs, static_graphs, passengers_data
-    return make_graphs, os, passengers_data, pl, px, static_graphs
+    from data_functions_en import make_graphs, static_graphs, total_graphs
+    return make_graphs, os, pl, px, static_graphs, total_graphs
 
 
 @app.cell
 def __(make_graphs, os, pl):
-    nsample = 600000
+    nsample = 155000
     _dflocal = 'data/nyc_taxi.parq'
     _exists_local = os.path.isfile(_dflocal)
     _dfname = _dflocal if _exists_local else 'https://feelmath.eu/Download/nyc_taxi.parq'
@@ -29,7 +29,12 @@ def __(make_graphs, os, pl):
     if not _exists_local:
         df.write_parq(_dflocal)
     meanloc = [df['pick_lat'].mean(), df['pick_lon'].mean()]
-    dfdays = make_graphs(df)
+    df = df.with_columns([(df['pick_dt'].dt.day().alias('pick_day')), 
+                          (df['pick_dt'].dt.hour().alias('pick_hour')),
+                          (df['drop_dt'].dt.day().alias('drop_day')),
+                          (df['drop_dt'].dt.hour().alias('drop_hour'))])\
+                        .drop(['pick_dt', 'drop_dt'])
+    dfdays = make_graphs(df, create=True)
     return df, dfdays, meanloc, nsample
 
 
@@ -63,9 +68,10 @@ def __(day_choose, dfdays, direction, mo):
 def __(day_choose, df, direction, hour_choose, meanloc, mo, px):
     def view_map():
         is_pick = (direction.value == 'Pickup')
-        col_dt = 'pick_dt' if is_pick else 'drop_dt'
-        df_filtered = df.filter((df[col_dt].dt.day() == day_choose.value) & 
-                                (df[col_dt].dt.hour() == hour_choose.value))
+        col_day = 'pick_day' if is_pick else 'drop_day'
+        col_hour = 'pick_hour' if is_pick else 'drop_hour'
+        df_filtered = df.filter((df[col_day] == day_choose.value) & 
+                                (df[col_hour] == hour_choose.value))
         col_lat = 'pick_lat' if is_pick else 'drop_lat'
         col_lon = 'pick_lon' if is_pick else 'drop_lon'
         lat, lon = df_filtered[col_lat], df_filtered[col_lon]
@@ -75,9 +81,9 @@ def __(day_choose, df, direction, hour_choose, meanloc, mo, px):
                                 mapbox_style="open-street-map", zoom=10, width=750, height=500)
         fig.update_traces(marker={"size": 4})
         fig.update_layout(margin={'t': 25}, hovermode=False)
-        return mo.ui.plotly(fig)
-    mapplot = view_map()
-    return mapplot, view_map
+        return mo.ui.plotly(fig), df_filtered
+    mapplot, df_filtered = view_map()
+    return df_filtered, mapplot, view_map
 
 
 @app.cell
@@ -91,9 +97,9 @@ def __(
     mapplot,
     mo,
     nsample,
-    passengers_data,
     pl,
     static_plots,
+    total_graphs,
 ):
     _main_title = mo.md(
         f"""
@@ -108,14 +114,14 @@ def __(
         lon_max, lat_min = _mapranges[1]
         df_ranges = df.filter((lat_min < pl.col('pick_lat')) & (pl.col('pick_lat') < lat_max) &
                               (lon_min < pl.col('pick_lon')) & (pl.col('pick_lon') < lon_max) &
-                              (pl.col('pick_dt').dt.day() == day_choose.value))
+                              (pl.col('pick_day') == map_day_choose.value))
 
-    _local_plot = passengers_data(df_ranges, pick=True, what=['passengers', 'rides']) if _local_data else mo.md('# No selection')
+    _local_plot = total_graphs(df_ranges, pick=True, what=['total_pass', 'total_rides']) if _local_data else mo.md('# No selection')
     _selection_body = mo.vstack([map_day_choose, _local_plot]) if _local_data else mo.vstack([_local_plot])
 
     _maps = mo.vstack([mo.hstack([direction, day_choose, hour_choose], justify='center'), 
                        mapplot], align='center')
-    _tabs = mo.tabs({'Day plots': hourly, 'Summary plots': static_plots,
+    _tabs = mo.tabs({'Day plots': hourly, 'Monthly plots': static_plots,
                      'Locations on map': _maps, 'Selection graphs': _selection_body})
 
     app_tabs = mo.vstack([_main_title, _tabs], align='stretch') 
