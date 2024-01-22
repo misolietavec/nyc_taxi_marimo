@@ -6,42 +6,42 @@ import os, pickle
 def get_totals(frm, pick=True):
     columns = ['pick_day','pick_hour'] if pick else ['drop_day','drop_hour']
     df_total = frm.group_by(columns)\
-                            .agg([pl.col('fare').sum().alias('total_fare'),\
-                                  pl.col('passengers').sum().alias('total_pass'),
-                                  pl.col('fare').count().alias('total_rides')])\
+                            .agg([pl.col('fare').sum().alias('Platby'),\
+                                  pl.col('passengers').sum().alias('Cestujúci'),
+                                  pl.col('fare').count().alias('Jazdy')])\
                             .sort(by=columns)
     return df_total
+   
 
-
-def total_graphs(frm, pick=True, height=400, width=750, what=['total_pass', 'total_rides', 'total_fare'],
+def total_graphs(frm, pick=True, height=400, width=750, what=['Cestujúci', 'Jazdy', 'Platby'], 
                  monthly=False, day=True):
     if not monthly:
         frm = get_totals(frm) if pick else get_totals(frm, pick=False)
         column = 'pick_hour' if pick else 'drop_hour'
-    else:
+    else: 
         column = ('pick_day' if pick else 'drop_day') if day else ('pick_hour' if pick else 'drop_hour')
-    ylabel = 'Pickups' if pick else 'Dropoffs' 
-    max_jaz, max_pas, max_far = frm['total_rides'].max(), frm['total_pass'].max(), frm['total_fare'].max()
+    ylabel = 'Nástupy' if pick else 'Výstupy'
+    max_jaz, max_pas, max_far = frm['Jazdy'].max(), frm['Cestujúci'].max(), frm['Platby'].max()
     coeff = max(max_jaz, max_pas) / max_far
-    trzba = frm['total_fare'].sum()
-    frm = frm.with_columns(pl.col('total_fare') * coeff)
-    scalestr = f"Fare multiplied by {coeff:.3f}, total fare {trzba:.2f}" if ('total_fare' in what) else ''
-    colname = 'Hour' if not (monthly and day) else 'Day'
-    graf = px.bar(frm, x=column, y=what, barmode='group', height=height, width=width, title=scalestr, 
-                  labels={column: colname, 'value': ylabel})
+    trzba = frm['Platby'].sum()
+    frm = frm.with_columns(pl.col('Platby') * coeff)
+    scalestr = f"Platby vynásobené {coeff:.3f}, skutočné platby {trzba:.2f}" if ('Platby' in what) else ''
+    colname = 'Hodina' if not (monthly and day) else 'Deň' 
+    graf = px.bar(frm, x=column, y=what, barmode='group', height=height, width=750, title=scalestr, 
+                  labels={column: colname, 'variable': 'Premenná', 'value': 'Hodnota'})
     if monthly and day:
-        xtext = 4 * ['Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed'] + ['Thu','Fri','Sat']
+        xtext = 4 * ['Štv', 'Pi', 'So', 'Ne', 'Po', 'Ut', 'Str'] + ['Štv', 'Pi', 'So']
         xtext = [f"{ind + 1}, {dni}" for ind, dni in enumerate(xtext)]
         graf.update_layout(xaxis=dict(tickmode='array', tickvals=list(range(1, 32)),
-                           ticktext = xtext, tickangle=70), yaxis=dict(title=ylabel))
+                           ticktext=xtext, tickangle=70), yaxis=dict(title=ylabel))
     else:
-        graf.update_layout(xaxis=dict(tickmode='array', tickvals=list(range(24))), yaxis=dict(title=ylabel))
+        graf.update_layout(xaxis=dict(tickmode='array', tickvals=list(range(24))), yaxis=dict(title=ylabel))  
     return graf
 
 
 # We will make plots only once, then load them from pickle file
 def make_graphs(df, create=True):
-    plotfile = 'data/dfdays_en.pic'
+    plotfile = 'data/dfdays.pic'
     if create:
         dfdays = {}
         for day in range(1, 32):
@@ -55,12 +55,14 @@ def make_graphs(df, create=True):
         dfdays = pickle.load(open(plotfile,'rb'))
     return dfdays
 
+
 def monthly_frame(frm, pick=True, day=True):
     column = ('pick_day' if pick else 'drop_day') if day else ('pick_hour' if pick else 'drop_hour')
-    df_month = frm.group_by(column).agg([pl.col('fare').sum().alias('total_fare'), 
-                                         pl.col('passengers').sum().alias('total_pass'),
-                                         pl.col('fare').count().alias('total_rides')]).sort(by=column)
+    df_month = frm.group_by(column).agg([pl.col('fare').sum().alias('Platby'), 
+                                         pl.col('passengers').sum().alias('Cestujúci'),
+                                         pl.col('fare').count().alias('Jazdy')]).sort(by=column)
     return df_month
+
 
 # Plots - pickups and dropoffs by hour (rides, passenger count, fare), total
 def static_graphs(frm):
@@ -70,3 +72,5 @@ def static_graphs(frm):
     drop_hours = total_graphs(monthly_frame(frm, pick=False, day=False), height=350, width=900, 
                               monthly=True, pick=False, day=False) 
     return pick_days, drop_days, pick_hours, drop_hours
+
+
