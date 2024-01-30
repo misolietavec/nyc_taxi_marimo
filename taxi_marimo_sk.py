@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.1.79"
+__generated_with = "0.1.88"
 app = marimo.App(width="full")
 
 
@@ -14,26 +14,17 @@ def __():
 def __():
     import polars as pl
     import plotly.express as px
-    import os
+    import numpy as np
     from data_functions_sk import make_graphs, static_graphs, total_graphs
-    return make_graphs, os, pl, px, static_graphs, total_graphs
+    return make_graphs, np, pl, px, static_graphs, total_graphs
 
 
 @app.cell
 def __(make_graphs, pl):
     nsample = 155000
     _dflocal = 'data/nyc_taxi155k.parq'
-    # _exists_local = os.path.isfile(_dflocal)
-    # _dfname = _dflocal if _exists_local else 'https://feelmath.eu/Download/nyc_taxi.parq'
-    df = pl.read_parquet(_dflocal) # .sample(nsample)
-    # if not _exists_local:
-    #    df.write_parq(_dflocal)
+    df = pl.read_parquet(_dflocal)
     meanloc = [df['pick_lat'].mean(), df['pick_lon'].mean()]
-    df = df.with_columns([(df['pick_dt'].dt.day().alias('pick_day')), 
-                          (df['pick_dt'].dt.hour().alias('pick_hour')),
-                          (df['drop_dt'].dt.day().alias('drop_day')),
-                          (df['drop_dt'].dt.hour().alias('drop_hour'))])\
-                        .drop(['pick_dt', 'drop_dt'])
     dfdays = make_graphs(df, create=False)
     return df, dfdays, meanloc, nsample
 
@@ -54,6 +45,7 @@ def __(mo):
     map_selection = mo.ui.checkbox(label='Umožniť výber')
     map_day_choose = mo.ui.slider(start=1, stop=31, value=14, debounce=True, label='Deň pre výber')
     day_or_hour = mo.ui.radio(options=['Podľa dní','Podľa hodín'], value='Podľa dní', inline=True)
+    nbins = mo.ui.slider(start=10, stop=120, value=20, label='Počet tried')
     return (
         day_choose,
         day_or_hour,
@@ -61,6 +53,7 @@ def __(mo):
         hour_choose,
         map_day_choose,
         map_selection,
+        nbins,
     )
 
 
@@ -77,6 +70,27 @@ def __(day_choose, dfdays, direction, mo):
 
 
 @app.cell
+def __(df, mo, nbins, np, pl, px):
+    def _view_distances(): 
+        y, x = np.histogram(df['distance'], bins=nbins.value, range=(0, 8))
+        x = (x[0:-1] + x[1:]) / 2
+        df_hist = pl.DataFrame({'x': x, 'y': y})
+        return px.bar(data_frame=df_hist, x='x', y='y', 
+                      barmode='group', labels={'x': 'Vzdialenosť', 'y': 'početnosť'}, width=900, height=350)
+
+
+    def _view_rtimes():
+        y, x = np.histogram(df['rtime'], bins=nbins.value, range=(0, 45)) # min.
+        x = (x[0:-1] + x[1:]) / 2  # centers of intervals
+        df_hist = pl.DataFrame({'x': x, 'y': y})
+        return px.bar(data_frame=df_hist, x='x', y='y', 
+                      barmode='group', labels={'x': 'Čas jazdy (min.)', 'y': 'početnosť'}, width=900, height=350)
+    dist_and_times = mo.vstack([mo.hstack([nbins, mo.md(f"Poč. tried: {nbins.value}")], justify='center'),
+                                _view_distances(), _view_rtimes()])
+    return dist_and_times,
+
+
+@app.cell
 def __(day_or_hour, mo, static_days, static_hours):
     def _view_totals():
         return static_days if day_or_hour.value == 'Podľa dní' else static_hours
@@ -86,7 +100,7 @@ def __(day_or_hour, mo, static_days, static_hours):
 
 @app.cell
 def __(day_choose, df, direction, hour_choose, meanloc, mo, px):
-    def view_map():
+    def _view_map():
         is_pick = (direction.value == 'Nástup')
         col_day = 'pick_day' if is_pick else 'drop_day'
         col_hour = 'pick_hour' if is_pick else 'drop_hour'
@@ -102,8 +116,8 @@ def __(day_choose, df, direction, hour_choose, meanloc, mo, px):
         fig.update_traces(marker={"size": 4})
         fig.update_layout(margin={'t': 25}, hovermode=False)
         return mo.ui.plotly(fig)
-    mapplot = view_map()
-    return mapplot, view_map
+    mapplot = _view_map()
+    return mapplot,
 
 
 @app.cell
@@ -111,6 +125,7 @@ def __(
     day_choose,
     df,
     direction,
+    dist_and_times,
     hour_choose,
     hourly,
     map_day_choose,
@@ -144,7 +159,7 @@ def __(
     _map_info = mo.md(f"Deň: {day_choose.value}, Hodina: {hour_choose.value}")
     _maps = mo.vstack([mo.hstack([direction, day_choose, hour_choose, map_selection], justify='center'), 
                       _map_info, mapplot], align='center')
-    _tabs = mo.tabs({'Grafy po dňoch': hourly, 'Grafy celkové': totals,
+    _tabs = mo.tabs({'Grafy po dňoch': hourly, 'Grafy celkové': totals, 'Histogramy': dist_and_times,
                      'Polohy na mape': _maps, 'Grafy pre výber': _selection_body})
 
     app_tabs = mo.vstack([_main_title, _tabs], align='stretch') 

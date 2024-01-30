@@ -4,15 +4,15 @@ import os, pickle
 
 
 def get_totals(frm, pick=True):
-    columns = ['pick_day','pick_hour'] if pick else ['drop_day','drop_hour']
+    columns = [pl.col('pick_day'), pl.col('pick_hour')] if pick else [pl.col('drop_day'), pl.col('drop_hour')]
     df_total = frm.group_by(columns)\
                             .agg([pl.col('fare').sum().alias('Platby'),\
                                   pl.col('passengers').sum().alias('Cestujúci'),
                                   pl.col('fare').count().alias('Jazdy')])\
                             .sort(by=columns)
     return df_total
-   
 
+    
 def total_graphs(frm, pick=True, height=400, width=750, what=['Cestujúci', 'Jazdy', 'Platby'], 
                  monthly=False, day=True):
     if not monthly:
@@ -41,7 +41,7 @@ def total_graphs(frm, pick=True, height=400, width=750, what=['Cestujúci', 'Jaz
 
 # We will make plots only once, then load them from pickle file
 def make_graphs(df, create=True):
-    plotfile = 'data/dfdays.pic'
+    plotfile = 'data/dfdays_sk.pic'
     if create:
         dfdays = {}
         for day in range(1, 32):
@@ -50,7 +50,7 @@ def make_graphs(df, create=True):
             dfdays[day] = {}
             dfdays[day]['pick_graph'] = total_graphs(pick_df) 
             dfdays[day]['drop_graph'] = total_graphs(drop_df, pick=False)
-            pickle.dump(dfdays, open(plotfile,'wb'))
+        pickle.dump(dfdays, open(plotfile,'wb'))
     else:
         dfdays = pickle.load(open(plotfile,'rb'))
     return dfdays
@@ -63,6 +63,15 @@ def monthly_frame(frm, pick=True, day=True):
                                          pl.col('fare').count().alias('Jazdy')]).sort(by=column)
     return df_month
 
+def weekday_plot(frm):
+    df_wd = frm.with_columns(pl.date(2015, 1, pl.col('pick_day')).dt.weekday().alias('wday'))\
+                           .select(['pick_day', 'wday'])
+    wstat = df_wd.group_by(pl.col('wday')).agg(pl.col('wday').count().alias('counts')).sort(by='wday')
+    graf = px.bar(wstat, x='wday', y='counts', barmode='group', orientation='v', width=750, height=400)
+    xtext = ['Pondelok', 'Utorok', 'Streda', 'Štvrtok', 'Piatok', 'Sobota', 'Nedeľa']
+    graf.update_layout(xaxis=dict(tickmode='array', tickvals=list(range(1, 8)), title='Deň v týždni',
+                       ticktext=xtext, tickangle=0), yaxis=dict(title="Počet jázd"))
+    return graf
 
 # Plots - pickups and dropoffs by hour (rides, passenger count, fare), total
 def static_graphs(frm):

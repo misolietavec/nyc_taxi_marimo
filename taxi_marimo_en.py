@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.1.79"
+__generated_with = "0.1.88"
 app = marimo.App(width="full")
 
 
@@ -14,26 +14,17 @@ def __():
 def __():
     import polars as pl
     import plotly.express as px
-    import os
+    import numpy as np
     from data_functions_en import make_graphs, static_graphs, total_graphs
-    return make_graphs, os, pl, px, static_graphs, total_graphs
+    return make_graphs, np, pl, px, static_graphs, total_graphs
 
 
 @app.cell
 def __(make_graphs, pl):
     nsample = 155000
     _dflocal = 'data/nyc_taxi155k.parq'
-    # _exists_local = os.path.isfile(_dflocal)
-    # _dfname = _dflocal if _exists_local else 'https://feelmath.eu/Download/nyc_taxi.parq'
-    df = pl.read_parquet(_dflocal)   # .sample(nsample)
-    # if not _exists_local:
-    #    df.write_parq(_dflocal)
+    df = pl.read_parquet(_dflocal)
     meanloc = [df['pick_lat'].mean(), df['pick_lon'].mean()]
-    df = df.with_columns([(df['pick_dt'].dt.day().alias('pick_day')), 
-                          (df['pick_dt'].dt.hour().alias('pick_hour')),
-                          (df['drop_dt'].dt.day().alias('drop_day')),
-                          (df['drop_dt'].dt.hour().alias('drop_hour'))])\
-                        .drop(['pick_dt', 'drop_dt'])
     dfdays = make_graphs(df, create=False)
     return df, dfdays, meanloc, nsample
 
@@ -51,9 +42,10 @@ def __(mo):
     day_choose = mo.ui.slider(start=1, stop=31, value=14, debounce=True, label='Day')
     hour_choose = mo.ui.slider(start=0, stop=23, value=11, debounce=True, label='Hour')
     direction = mo.ui.radio(options=['Pickup','Dropoff'], value='Pickup', label='Direction', inline=True)
-    day_or_hour = mo.ui.radio(options=['Plot days','Plot hours'], value='Plot days', inline=True)
+    day_or_hour = mo.ui.radio(options=['By days','By hours'], value='By days', inline=True)
     map_selection = mo.ui.checkbox(label='Enable box selection')
     map_day_choose = mo.ui.slider(start=1, stop=31, value=14, debounce=True, label='Day for selection')
+    nbins = mo.ui.slider(start=10, stop=120, value=20, label='Bins number')
     return (
         day_choose,
         day_or_hour,
@@ -61,6 +53,7 @@ def __(mo):
         hour_choose,
         map_day_choose,
         map_selection,
+        nbins,
     )
 
 
@@ -79,9 +72,30 @@ def __(day_choose, dfdays, direction, mo):
 @app.cell
 def __(day_or_hour, mo, static_days, static_hours):
     def _view_totals():
-        return static_days if day_or_hour.value == 'Plot days' else static_hours
+        return static_days if day_or_hour.value == 'By days' else static_hours
     totals = mo.vstack([day_or_hour, _view_totals()], align='center')
     return totals,
+
+
+@app.cell
+def __(df, mo, nbins, np, pl, px):
+    def _view_distances(): 
+        y, x = np.histogram(df['distance'], bins=nbins.value, range=(0, 8))
+        x = (x[0:-1] + x[1:]) / 2
+        df_hist = pl.DataFrame({'x': x, 'y': y})
+        return px.bar(data_frame=df_hist, x='x', y='y', 
+                      barmode='group', labels={'x': 'Distance', 'y': 'count'}, width=900, height=350)
+
+
+    def _view_rtimes():
+        y, x = np.histogram(df['rtime'], bins=nbins.value, range=(0, 45)) # min.
+        x = (x[0:-1] + x[1:]) / 2  # centers of intervals
+        df_hist = pl.DataFrame({'x': x, 'y': y})
+        return px.bar(data_frame=df_hist, x='x', y='y', 
+                      barmode='group', labels={'x': 'Ride time (min.)', 'y': 'count'}, width=900, height=350)
+    dist_and_times = mo.vstack([mo.hstack([nbins, mo.md(f"Nbins: {nbins.value}")], justify='center'),
+                                _view_distances(), _view_rtimes()])
+    return dist_and_times,
 
 
 @app.cell
@@ -111,6 +125,7 @@ def __(
     day_choose,
     df,
     direction,
+    dist_and_times,
     hour_choose,
     hourly,
     map_day_choose,
@@ -144,7 +159,7 @@ def __(
     _map_info = mo.md(f"Day: {day_choose.value}, Hour: {hour_choose.value}")
     _maps = mo.vstack([mo.hstack([direction, day_choose, hour_choose, map_selection], justify='center'), 
                       _map_info, mapplot], align='center')
-    _tabs = mo.tabs({'Day plots': hourly, 'Monthly plots': totals,
+    _tabs = mo.tabs({'Day plots': hourly, 'Monthly plots': totals, 'Histograms': dist_and_times,
                      'Locations on map': _maps, 'Selection graphs': _selection_body})
 
     app_tabs = mo.vstack([_main_title, _tabs], align='stretch') 
