@@ -1,6 +1,7 @@
 import polars as pl
 import plotly.express as px
 import os, pickle
+import numpy as np
 
 
 def get_totals(frm, pick=True):
@@ -41,7 +42,7 @@ def total_graphs(frm, pick=True, height=400, width=750, what=['Cestujúci', 'Jaz
 
 # We will make plots only once, then load them from pickle file
 def make_graphs(df, create=True):
-    plotfile = 'data/dfdays_sk.pic'
+    plotfile = 'data/dfdays.pic'
     if create:
         dfdays = {}
         for day in range(1, 32):
@@ -66,12 +67,15 @@ def monthly_frame(frm, pick=True, day=True):
 def weekday_plot(frm):
     df_wd = frm.with_columns(pl.date(2015, 1, pl.col('pick_day')).dt.weekday().alias('wday'))\
                            .select(['pick_day', 'wday'])
+    wdcount = np.array([4, 4, 4, 5, 5, 5, 4])
     wstat = df_wd.group_by(pl.col('wday')).agg(pl.col('wday').count().alias('counts')).sort(by='wday')
+    wstat = wstat.with_columns(pl.col('counts') / wdcount)  # aby bolo na jeden den v tyzdni, inak nespravodlivo
     graf = px.bar(wstat, x='wday', y='counts', barmode='group', orientation='v', width=750, height=400)
     xtext = ['Pondelok', 'Utorok', 'Streda', 'Štvrtok', 'Piatok', 'Sobota', 'Nedeľa']
     graf.update_layout(xaxis=dict(tickmode='array', tickvals=list(range(1, 8)), title='Deň v týždni',
-                       ticktext=xtext, tickangle=0), yaxis=dict(title="Počet jázd"))
+                       ticktext=xtext, tickangle=0), yaxis=dict(title="Priem. počet jázd"))
     return graf
+
 
 # Plots - pickups and dropoffs by hour (rides, passenger count, fare), total
 def static_graphs(frm):

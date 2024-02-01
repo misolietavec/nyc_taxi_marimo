@@ -1,6 +1,7 @@
 import polars as pl
 import plotly.express as px
 import os, pickle
+import numpy as np
 
 
 def get_totals(frm, pick=True):
@@ -67,7 +68,9 @@ def monthly_frame(frm, pick=True, day=True):
 def weekday_plot(frm):
     df_wd = frm.with_columns(pl.date(2015, 1, pl.col('pick_day')).dt.weekday().alias('wday'))\
                            .select(['pick_day', 'wday'])
+    wdcount = np.array([4, 4, 4, 5, 5, 5, 4])
     wstat = df_wd.group_by(pl.col('wday')).agg(pl.col('wday').count().alias('counts')).sort(by='wday')
+    wstat = wstat.with_columns(pl.col('counts') / wdcount)  # mean for one weekday
     graf = px.bar(wstat, x='wday', y='counts', barmode='group', orientation='v', width=750, height=400)
     xtext = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     graf.update_layout(xaxis=dict(tickmode='array', tickvals=list(range(1, 8)), title='Weekday',
